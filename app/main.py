@@ -15,6 +15,7 @@ class RecallBody(BaseModel):
     question: str
 
 
+# api endpoints
 @app.get("/health")
 def health():
     return {"ok": True, "mock": models.is_mock()}
