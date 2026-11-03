@@ -17,12 +17,16 @@ class RecallBody(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "mock": models.is_mock()}
+    return {
+        "ok": True,
+        "mock": models.is_mock(),
+        "provider": "mock" if models.is_mock() else models.provider(),
+    }
 
 
 @app.post("/remember")
 async def remember(label: str = Form(...), image: UploadFile = File(...)):
-    """SAM confirms the object is in view, then Spark describes where it is."""
+    """Confirm and describe an object with the configured vision model."""
     if not label or not label.strip():
         raise HTTPException(status_code=400, detail="label is required")
 
@@ -30,14 +34,15 @@ async def remember(label: str = Form(...), image: UploadFile = File(...)):
     if not data:
         raise HTTPException(status_code=400, detail="image is required")
 
-    boxes = models.find_object(data, label)
+    mime = image.content_type or "image/jpeg"
+    boxes = models.find_object(data, label, mime)
     if not boxes:
         return {
             "saved": False,
             "say": f"I can't see your {label}. Hold it in view and try again.",
         }
 
-    place = models.describe_place(data, label)
+    place = models.describe_place(data, label, mime)
     item_id = store.add_item(label, place, data)
 
     return {
@@ -75,7 +80,7 @@ async def guide(target: str = Form(...), image: UploadFile = File(...)):
     if not data:
         raise HTTPException(status_code=400, detail="image is required")
 
-    boxes = models.find_object(data, target)
+    boxes = models.find_object(data, target, image.content_type or "image/jpeg")
     best = max(boxes, key=lambda b: b.area, default=None)
     return cue_for(best)
 

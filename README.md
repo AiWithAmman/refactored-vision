@@ -1,32 +1,49 @@
-# Lumen (backend)
+# Lumen
 
-Voice-first assistant for blind users: remember where things were put, recall them later, and guide the last ten feet to the object. Built for the Meta Global AI Developer Hackathon.
+An assistive prototype for remembering where objects were placed, recalling those locations, and offering visual directional cues. Built for the Meta Global AI Developer Hackathon.
 
-## Meta models and their jobs
+## Model providers
 
-| Job | Model |
-|---|---|
-| Confirm the object is in view and locate it in each frame | SAM 3.1 (`sam-3.1`) |
-| Describe where an object is and reason over memory | Muse Spark (`SPARK_MODEL`) |
-| Speech-to-text for next step | Muse Voice Transcribe |
+Choose the provider with `LUMEN_PROVIDER`:
+
+| Provider | Object localization | Place description and recall |
+|---|---|---|
+| `mistral` | Mistral vision model (`MISTRAL_VISION_MODEL`) estimates a bounding box from the uploaded image | Same vision-capable model |
+| `meta` | SAM 3.1 (`sam-3.1`) | Muse Spark (`SPARK_MODEL`) |
+
+Mistral vision-model bounding boxes are approximate, not a substitute for dedicated object detection, depth sensing, or safe mobility guidance. Lumen does not estimate distance or detect hazards.
 
 ## Setup
 
-```bash
+```powershell
 python -m venv .venv
-source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --host 0.0.0.0
+Copy-Item .env.example .env
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+On macOS/Linux, activate with `source .venv/bin/activate` and copy the config with `cp .env.example .env`.
+
+For a no-credential smoke test, the example config starts in mock mode. Mock mode returns canned responses and **does not analyze uploaded images**.
 
 ## Run it
 
 ```bash
-pytest
+python -m pytest
 ```
 
-Open http://localhost:8000/docs to try every endpoint in the browser.
+Open http://localhost:8000/docs to try the endpoints. In `/health`, confirm `"mock": false` to ensure requests use the configured live provider.
+
+### Try live Mistral vision
+
+1. Create a Mistral API key, then set `LUMEN_PROVIDER=mistral`, `MISTRAL_API_KEY=<your-key>`, and `LUMEN_MOCK=0` in `.env`. Keep the key private and do not commit `.env`.
+2. Start the server and open `/docs`.
+3. Call `POST /remember` with an image showing the object and a label (for example `keys`). Check that it returns `"saved": true` and a plausible place.
+4. Call `POST /recall` with a question about that item.
+5. Call `POST /guide` with a fresh image and the target label. It returns an approximate left/right/forward/reach cue based on the model-estimated box.
+
+If Mistral rejects the configured model, select a vision model enabled for your account using `MISTRAL_VISION_MODEL`. The default is `mistral-small-2506`.
 
 ## Endpoints
 
@@ -43,22 +60,14 @@ curl -H 'content-type: application/json' -d '{"question":"where are my keys?"}' 
 curl -F target=keys -F image=@frame.jpg localhost:8000/guide
 ```
 
-## Going live (set `LUMEN_MOCK=0`)
+## Meta provider
 
-Three things were NOT verified against official docs. Check them first with a real key:
+To use Meta instead, set `LUMEN_PROVIDER=meta`, `MODEL_API_KEY=<your-key>`, and `LUMEN_MOCK=0`. The Meta request formats and model availability still need to be verified with a real account and key.
 
-1. **SAM request shape** in `find_object`: confirm against https://dev.meta.ai/docs/media-segmentation.
-   Output parsing (`<|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..|>`) matches a documented live response.
-2. **Image input for Muse Spark** (`input_image` with a data URL via the Responses API).
-3. **Model name**: default `muse-spark-1.3`; if it errors, try `muse-spark-1.2`.
+## Current limitations
 
-Privacy: use the standard tier, not `*-contributor` models (those may train on prompts/images).
-Requests send `store=False`.
+- No live camera, speech input, or text-to-speech integration; endpoints accept uploaded image files and text.
+- No `/watch` hazard alert, depth sensing, or reliable distance estimation.
+- Model output can be wrong or uncertain. Use the app only as an experimental assistive aid, never as a replacement for a cane, guide dog, or other established mobility aid.
 
-## Not built yet
-
-- `/watch` (approaching-hazard alert), the tool router, voice input.
-- Speech out: the docs show speech-to-text only, so use the phone's built-in text-to-speech.
-- Muse Voice is a realtime WebSocket (`wss://api.meta.ai/v1/asr/realtime`), so plan time for it.
-
-Lumen assists and does not replace a cane or guide dog.
+Mistral vision follows its [official vision API documentation](https://docs.mistral.ai/studio/conversations/vision/); Meta requests use the standard tier with `store=False`.

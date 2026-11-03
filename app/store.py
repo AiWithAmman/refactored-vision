@@ -7,7 +7,15 @@ import uuid
 from datetime import datetime
 from typing import List
 
-DB_PATH = os.getenv("LUMEN_DB", "data/lumen.db")
+def _normalize_db_path(raw: str) -> str:
+    value = os.path.expanduser(raw)
+    if os.name == "nt" and value.startswith("/"):
+        drive = os.environ.get("SYSTEMDRIVE", "C:")
+        value = os.path.join(drive, value.lstrip("/"))
+    return os.path.normpath(value)
+
+
+DB_PATH = _normalize_db_path(os.getenv("LUMEN_DB", "data/lumen.db"))
 IMG_DIR = os.path.join(os.path.dirname(DB_PATH) or ".", "images")
 
 
@@ -35,6 +43,9 @@ def _conn() -> sqlite3.Connection:
 
 def add_item(label: str, place: str, image: bytes) -> int:
     path = os.path.join(IMG_DIR, f"{uuid.uuid4().hex}.jpg")
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(path, "wb") as f:
         f.write(image)
 
