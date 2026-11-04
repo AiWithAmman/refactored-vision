@@ -1,27 +1,21 @@
 # Lumen
 
-Lumen helps blind and low-vision people remember where they placed objects, recall those locations, and try visual cues to find them. It includes a browser demo with camera capture, voice input, and spoken responses.
+Lumen is an experimental browser app for blind and low-vision users. It can remember where an object was placed, answer questions about saved items, and provide visual cues for locating an object. The browser demo supports camera capture, typed or spoken requests, and spoken responses.
 
-## Model providers
+## Meta configuration
 
-Choose the provider with `LUMEN_PROVIDER`:
+Lumen's Meta integration sends requests to `https://api.meta.ai/v1` using the `openai` Python package. It uses SAM 3.1 for object localization and Muse Spark for descriptions, recall, and text reading.
 
-| Provider | Object localization | Place description and recall |
-|---|---|---|
-| `gemini` | Gemini (`GEMINI_MODEL`) estimates a bounding box from the uploaded image | Same vision-capable model |
-| `mistral` | Mistral vision model (`MISTRAL_VISION_MODEL`) estimates a bounding box from the uploaded image | Same vision-capable model |
-| `meta` | SAM 3.1 (`sam-3.1`) | Muse Spark (`SPARK_MODEL`) |
+The integration requires a valid `MODEL_API_KEY` with access to the configured endpoint and models. Access is not guaranteed. The linked [Strvm/meta-ai-api](https://github.com/Strvm/meta-ai-api) project is an unofficial wrapper for Meta AI's website; Lumen does not use it, and its README does not describe the image-analysis API Lumen needs.
 
-Gemini's default model is `gemini-flash-lite-latest`; override it with `GEMINI_MODEL` if needed. Gemini free-tier quotas and model access are subject to Google's limits and can change. Google says free-tier API content may be used to improve its products, so do not send sensitive images using a free-tier key. Mistral/Gemini vision-model boxes are approximate, not a substitute for dedicated object detection, depth sensing, or safe mobility guidance. Lumen does not estimate distance. The optional approach alert is an experimental image-size heuristic and can miss or falsely report objects.
+## Setup on Windows
 
-## Setup
+Open a PowerShell terminal in the project folder and run:
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-Copy-Item .env.example .env
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 On macOS/Linux, activate with `source .venv/bin/activate` and copy the config with `cp .env.example .env`.
@@ -35,24 +29,6 @@ python -m pytest
 ```
 
 Open http://localhost:8000 for the browser demo, or http://localhost:8000/docs to try the API. In `/health`, confirm `"mock": false` to ensure requests use the configured live provider. The demo can capture camera frames, accept typed or spoken requests, and speak responses; speech recognition is supported by browsers such as Chrome and Edge.
-
-### Use Gemini Flash Lite
-
-1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/api-keys). Set `LUMEN_PROVIDER=gemini`, `GEMINI_API_KEY=<your-key>`, and `LUMEN_MOCK=0` in `.env`. The model defaults to `gemini-flash-lite-latest`; optionally set `GEMINI_MODEL` to another model available to your account.
-2. Restart the server and check `/health` for `"provider": "gemini"` and `"mock": false`.
-3. Try `POST /remember` with an image showing an object, then `/recall` and `/guide`.
-
-The free tier is quota-limited; switching providers does not guarantee unlimited requests. See [Google's Gemini API pricing and free-tier terms](https://ai.google.dev/gemini-api/docs/pricing).
-
-### Try live Mistral vision
-
-1. Create a Mistral API key, then set `LUMEN_PROVIDER=mistral`, `MISTRAL_API_KEY=<your-key>`, and `LUMEN_MOCK=0` in `.env`. Keep the key private and do not commit `.env`.
-2. Start the server and open the demo or `/docs`.
-3. Call `POST /remember` with an image showing the object and a label (for example `keys`). Check that it returns `"saved": true` and a plausible place.
-4. Call `POST /recall` with a question about that item.
-5. Call `POST /guide` with a fresh image and the target label. It returns an approximate left/right/forward/reach cue based on the model-estimated box.
-
-If Mistral rejects the configured model, select a vision model enabled for your account using `MISTRAL_VISION_MODEL`. The default is `mistral-small-2506`.
 
 ## Endpoints
 
