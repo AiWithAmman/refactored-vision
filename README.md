@@ -50,9 +50,7 @@ curl -H 'content-type: application/json' -d '{"question":"where are my keys?"}' 
 curl -F target=keys -F image=@frame.jpg localhost:8000/guide
 ```
 
-## Other providers
-
-To use Mistral, set `LUMEN_PROVIDER=mistral`, `MISTRAL_API_KEY=<your-key>`, and `LUMEN_MOCK=0`.
+## Providers
 
 To use Meta, set `LUMEN_PROVIDER=meta`, `MODEL_API_KEY=<your-key>`, and `LUMEN_MOCK=0`.
 
@@ -61,5 +59,3 @@ To use Meta, set `LUMEN_PROVIDER=meta`, `MODEL_API_KEY=<your-key>`, and `LUMEN_M
 - The browser demo depends on browser camera and speech APIs; the API itself accepts uploaded images and text rather than a continuous video or audio stream.
 - `/watch` only compares estimated 2D object-box sizes between frames; it is not hazard detection, depth sensing, or reliable distance estimation. False or missed alerts are possible. Test it only while stationary and do not rely on it for safety.
 - Model output can be wrong or uncertain. Use the app only as an experimental assistive aid, never as a replacement for a cane, guide dog, or other established mobility aid.
-
-Gemini requests use the [Google GenAI Python SDK](https://ai.google.dev/gemini-api/docs/libraries) and its [image input API](https://ai.google.dev/gemini-api/docs/image-understanding). Mistral vision follows its [official vision API documentation](https://docs.mistral.ai/studio/conversations/vision/); Meta requests use the standard tier with `store=False`.
