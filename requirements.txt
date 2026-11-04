@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 openai
-google-genai
 python-multipart
 python-dotenv
 pytest
