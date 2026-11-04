@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* Atkinson Hyperlegible was designed for low-vision readers; high contrast throughout. */
+  :root {
+    --bg: #EEF2F6; --ink: #0F1B2D; --navy: #12356B; --amber: #F2A900;
+    --ok: #1B7F4B; --line: #B8C6D6; --white: #FFFFFF;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 400 1.125rem/1.5 "Atkinson Hyperlegible", system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; }
+  .lede { margin: 0 0 20px; color: #33465E; }
+  video { width: 100%; aspect-ratio: 4 / 3; background: #1d2b3f; border-radius: 12px; object-fit: cover; display: block; }
+  #say { font-size: 1.65rem; line-height: 1.3; font-weight: 700; margin: 20px 0; min-height: 4.2rem; }
+  button { font: inherit; cursor: pointer; border-radius: 12px; border: 2px solid var(--navy);
+           background: var(--white); color: var(--navy); padding: 12px 16px; min-height: 48px; }
+  button:disabled { opacity: .6; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 4px solid var(--amber); outline-offset: 2px; }
+  #talk { width: 100%; min-height: 88px; font-size: 1.5rem; font-weight: 700;
+          background: var(--navy); color: var(--white); }
+  #talk.on { background: var(--amber); color: var(--ink); border-color: var(--ink); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .row > button { flex: 1 1 auto; }
+  .chips button { border-radius: 999px; font-size: 1rem; }
+  .opts { margin-top: 16px; display: grid; gap: 8px; }
+  .opts label { display: flex; gap: 10px; align-items: center; }
+  .opts input { width: 22px; height: 22px; }
+  form { display: flex; gap: 10px; margin-top: 16px; }
+  form input { flex: 1; font: inherit; padding: 12px; border: 2px solid var(--line); border-radius: 12px; min-width: 0; }
+  #note { color: #8A3B00; margin-top: 16px; }
+  .small { font-size: .95rem; color: #33465E; margin-top: 24px; }
+  #mode { margin: 10px 0 0; font-weight: 700; }
+  #mode.live { color: var(--ok); }
+  #mode.mock { color: #8A3B00; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lumen</h1>
+  <p class="lede">Remembers where you put things and guides you to them.</p>
+
+  <video id="video" playsinline muted aria-label="Camera view"></video>
+  <p id="mode" class="small" role="status">Checking server&hellip;</p>
+  <p id="say" aria-live="polite">Start the camera, then press Talk or choose a phrase.</p>
+
+  <button id="talk" type="button">Talk</button>
+
+  <div class="row chips" id="chips">
+    <button type="button" data-say="Remember my keys">Remember my keys</button>
+    <button type="button" data-say="Where are my keys?">Where are my keys?</button>
+    <button type="button" data-say="Guide me to my keys">Guide me to my keys</button>
+    <button type="button" data-say="Read this">Read this</button>
+  </div>
+
+  <form id="typed">
+    <input id="text" type="text" autocomplete="off" aria-label="Type a request" placeholder="Or type a request">
+    <button type="submit">Send</button>
+  </form>
+
+  <div class="opts">
+    <label><input id="watch" type="checkbox"> Warn me about approaching objects</label>
+    <label><input id="speak" type="checkbox" checked> Speak answers aloud</label>
+  </div>
+  <div class="row"><button id="start" type="button">Start camera</button></div>
+
+  <p id="note" hidden>Camera and microphone only work on localhost or HTTPS. Open this page at localhost, or use a secure tunnel on your phone.</p>
+  <p class="small">Lumen assists and does not replace a cane or guide dog.</p>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const sid = Math.random().toString(36).slice(2);
+const WATCH_CONCEPTS = "person,bicycle,car";   // each concept is one SAM call per check
+let stream = null, busy = false, guiding = false, watching = false;
+const video = $("video");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function say(text, speak = true) {
+  $("say").textContent = text;
+  if (speak && $("speak").checked && "speechSynthesis" in window) {
+    speechSynthesis.cancel();
+    speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  }
+}
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
+    video.srcObject = stream;
+    await video.play();
+    $("start").textContent = "Camera on";
+    $("start").disabled = true;
+    say("Camera is on. Press Talk, or choose a phrase.", false);
+  } catch (e) {
+    say("The camera is blocked. Allow camera access, and open this page at localhost or https.", false);
+  }
+}
+
+function frame() {
+  return new Promise((resolve) => {
+    if (!stream || !video.videoWidth) return resolve(null);
+    const w = 640, h = Math.round((video.videoHeight * w) / video.videoWidth);
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(video, 0, 0, w, h);
+    c.toBlob(resolve, "image/jpeg", 0.7);
+  });
+}
+
+async function post(path, fields, blob) {
+  const fd = new FormData();
+  for (const k in fields) fd.append(k, fields[k]);
+  if (blob) fd.append("image", blob, "frame.jpg");
+  const r = await fetch(path, { method: "POST", body: fd });
+  if (!r.ok) throw new Error(path + " " + r.status);
+  return r.json();
+}
+
+async function send(text) {
+  text = text.trim();
+  if (!text || busy) return;
+  busy = true; guiding = false;
+  say("Working on it.", false);
+  try {
+    const out = await post("/agent", { text }, await frame());
+    say(out.say);
+    if (out.start_guide) guideLoop(out.start_guide);
+  } catch (e) {
+    console.error(e);
+    say("Something went wrong. Check the server window for the error.", false);
+  } finally { busy = false; }
+}
+
+async function guideLoop(target) {
+  guiding = true;
+  let lastCue = "", lastAt = 0;
+  while (guiding) {
+    const blob = await frame();
+    if (blob) {
+      try {
+        const out = await post("/guide", { target }, blob);
+        const now = Date.now();
+        if (out.say !== lastCue || now - lastAt > 4000) { say(out.say); lastCue = out.say; lastAt = now; }
+        if (out.done || out.error) guiding = false;
+      } catch (e) { console.error(e); }
+    }
+    await sleep(1200);
+  }
+}
+
+async function watchLoop() {
+  let lastAt = 0;
+  while (watching) {
+    const blob = await frame();
+    if (blob) {
+      try {
+        const out = await post("/watch", { session_id: sid, concepts: WATCH_CONCEPTS }, blob);
+        if (out.say && Date.now() - lastAt > 3000) { say(out.say); lastAt = Date.now(); }
+      } catch (e) { console.error(e); }
+    }
+    await sleep(2000);
+  }
+}
+
+// Speech input: the browser's built-in recognizer (Chrome or Edge). Swap for Muse Voice later.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false;
+if (SR) {
+  rec = new SR();
+  rec.lang = "en-US";
+  rec.onresult = (e) => send(e.results[0][0].transcript);
+  rec.onend = () => { listening = false; $("talk").textContent = "Talk"; $("talk").classList.remove("on"); };
+  rec.onerror = () => { say("I didn't catch that. Try again, or type below.", false); };
+}
+$("talk").onclick = () => {
+  if (!rec) return say("Speech input needs Chrome or Edge. Type your request below instead.", false);
+  if (listening) return rec.stop();
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  try { rec.start(); listening = true; $("talk").textContent = "Listening"; $("talk").classList.add("on"); } catch (e) {}
+};
+
+$("start").onclick = startCamera;
+$("chips").onclick = (e) => { if (e.target.dataset.say) send(e.target.dataset.say); };
+$("typed").onsubmit = (e) => { e.preventDefault(); send($("text").value); $("text").value = ""; };
+$("watch").onchange = (e) => { watching = e.target.checked; if (watching) watchLoop(); };
+if (!window.isSecureContext) $("note").hidden = false;
+fetch("/health").then((r) => r.json()).then((h) => {
+  const el = $("mode");
+  el.className = h.mock ? "small mock" : "small live";
+  el.textContent = h.mock ? "Mock mode: canned answers, images are not analyzed." : `Live: ${h.provider}.`;
+}).catch(() => { $("mode").textContent = "Server not reachable."; });
+</script>
+</body>
+</html>
